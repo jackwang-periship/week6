@@ -1,0 +1,1 @@
+ATC_ALERT_URL = "http://www.fly.faa.gov/flyfaa/usmap.jsp"
