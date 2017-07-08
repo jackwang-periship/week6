@@ -6,28 +6,47 @@ Created on Mar 13, 2017
 import requests
 import pprint
 from bs4 import BeautifulSoup
-#specify the url
+from HTMLParser import HTMLParseError
 from __init__ import ATC_ALERT_URL
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+log = logging.getLogger()
+fileHandler = logging.FileHandler("waisum.log")
+fileHandler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+log.addHandler(fileHandler)
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+log.addHandler(handler)
 
 
 def getDelayedAirports():
     
-    # query the website and return the html to the variable 'page'
-    page = requests.get(ATC_ALERT_URL)
+    try:
+        page = requests.get(ATC_ALERT_URL)
+    except requests.exceptions.RequestException as e:
+        log.error("Failed to get page. MEG: %s" % e.message)
+        return dict()
     
     # parse the html using beautiful soap and store in variable `soup`
     soup = BeautifulSoup(page.content, 'html.parser')  
     #print soup.body
-     
-    # Take out the <div> of name and get its value
-    ElmDL = soup.find('dl', attrs={'class':'map', 'id':'usmap'})
-    #name = name_box.text.strip() # strip() is used to remove starting and trailing  
-    # print ElmDL
-    # print "--------------"
-    ElmDT = ElmDL.find_all_next('dt')
-    # print len(ElmDT);
-    ElmDD = ElmDL.find_all('dd')
-    # print len(ElmDD)
+    
+    try:
+        # Take out the <div> of name and get its value
+        ElmDL = soup.find('dl', attrs={'class':'map', 'id':'usmap'})
+        #name = name_box.text.strip() # strip() is used to remove starting and trailing  
+        # print ElmDL
+        # print "--------------"
+        ElmDT = ElmDL.find_all_next('dt')
+        # print len(ElmDT);
+        ElmDD = ElmDL.find_all('dd')
+        # print len(ElmDD)
+    except HTMLParseError:
+        log.error("HTML Parsing failure. MEG: %s" % e.message)
+        return dict()
     
     results = dict()
     for JJ in range(len(ElmDT)):
@@ -36,33 +55,26 @@ def getDelayedAirports():
         textDD = lineDD.getText()
         lineDTa = lineDT.find('a')
         airport = lineDTa['id']
-        # print airport,  textDD
-        #offset = lineDT.find("goAirportMap")
-        # airport =ElemDT 
-        if ('Departure delays are 15 minutes or less' in textDD ):
+        if 'Departure delays are 15 minutes or less' in textDD:
             pass
         else:
             oneAirpor = dict()
-            for br in lineDD.findAll('br'):
-                airport_city_state = br.nextSibling
+            br = lineDD.find('br')
+            if br is not None:
+                airport_city_state = br.text
                 airport_name = br.previous_element
                 oneAirpor['name'] = airport_name.strip()
-                oneAirpor['citystate'] =airport_city_state.strip()
-    
-            notes = list()
-            for section in lineDD.findAll('hr'):
-                nextNode = section
+                oneAirpor['citystate'] = airport_city_state.strip()
+                oneAirpor['airportcode'] = airport.upper()
                 note = ""
-                while True:
-                    nextNode = nextNode.nextSibling
-                    if nextNode is None or nextNode.string is None :
-                        notes.append(note)
-                        break
-                    if nextNode.string.find('Click for more info') == -1:
-                        note = note + nextNode.string
-            oneAirpor['status'] = note
-            results[airport.upper()] = oneAirpor       
-    
+                section = lineDD.find('hr')
+                if section is not None:
+                    note = section.text
+                    note = note[0: -22]
+                oneAirpor['status'] = note.strip()
+                results[airport] = oneAirpor       
+            else:
+                log.error("HTML Parsing failure. MEG: No airport, city and state information")
     return(results)
 
 if __name__ == "__main__":
